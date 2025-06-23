@@ -48,6 +48,70 @@ cp .env.example .env
 php artisan key:generate
 
 # Configura la conexión a tu base de datos en el archivo .env
+```
 
 ---
 ## ⚙️ Uso
+
+```bash
+# Levanta el servidor de desarrollo
+php artisan serve
+
+# Abre en tu navegador
+http://127.0.0.1:8000/home
+```
+
+1️⃣ Sube tu archivo Excel.
+2️⃣ Visualiza la estructura detectada.
+3️⃣ Genera el SQL y cópialo para crear tu base de datos en MySQL.
+
+
+---
+
+## 🎨 Frontend
+* Usa Bootstrap 5 y AdminLTE como panel de administración.
+
+---
+
+## 🧪 Tests
+
+```bash
+php artisan test
+```
+Incluye pruebas unitarias para validar la lectura de archivos de ejemplo y la generación de SQL.
+
+---
+
+## 📌 Estado actual
+
+* Funcionalidad principal implementada.
+
+* Generación de SQL básica (tipos de datos y claves primarias).
+
+* Relaciones y detección avanzada de tipos de datos en desarrollo.
+
+---
+
+## ✅ Contribuciones
+
+¡Pull requests y sugerencias son bienvenidos!
+Por favor abre un issue para proponer mejoras.
+
+---
+
+Autor: jordylh
+
+---
+
+## ✨ Notas
+
+Este proyecto es educativo y experimental.
+Usar bajo tu propio riesgo en producción.
+
+---
+
+## 📢 Contacto
+
+Para dudas o soporte:
+* Abre un Issue
+* O contáctame por GitHub

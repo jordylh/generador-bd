@@ -43,6 +43,7 @@ class DatabaseGeneratorController extends Controller
         }
 
         $analyzer = new ExcelAnalyzer($absolutePath);
+        //$analyzer->debugTables(); 
         $tables = $analyzer->loadAllSheets();
         //dd($preview); // <- Aquí
 

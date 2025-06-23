@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use Illuminate\Support\Str;
 
 class ExcelAnalyzer
 {
@@ -33,6 +34,11 @@ class ExcelAnalyzer
 
             $this->tables[$name] = $rows;
         }
+        //foreach ($this->tables as $tableName => $rows) {
+        //    dump("Tabla: $tableName");
+        //    dump($rows->toArray());
+        //}
+
     }
 
     // Para el preview, devuelve todas las hojas (nombre => filas)
@@ -45,11 +51,9 @@ class ExcelAnalyzer
     public function generateFullSQL()
     {
         $sqlStatements = [];
-
-        // Inferir esquema
         $schemas = [];
         foreach ($this->tables as $tableName => $rows) {
-            $headers = $rows[0];
+            $headers = $rows[0]->toArray();
             $dataRows = $rows->slice(1);
 
             $columnsInfo = $this->inferColumns($headers, $dataRows);
@@ -57,16 +61,18 @@ class ExcelAnalyzer
         }
 
         // Detectar PK
-        foreach ($schemas as $tableName => &$columnsInfo) {
+        foreach ($schemas as $tableName => &$columnsInfo) { // Referencia (&)
             $columnsInfo = $this->detectPrimaryKey($columnsInfo);
         }
+        unset($columnsInfo);
 
         // Detectar FK
-        foreach ($schemas as $tableName => &$columnsInfo) {
+        foreach ($schemas as $tableName => &$columnsInfo) { // Referencia (&)
             $columnsInfo = $this->detectForeignKeys($columnsInfo, $schemas);
         }
+        unset($columnsInfo);
 
-        // Crear SQL
+        $sqlStatements = [];
         foreach ($schemas as $tableName => $columnsInfo) {
             $sqlStatements[] = $this->createTableSQL($tableName, $columnsInfo);
         }
@@ -74,25 +80,24 @@ class ExcelAnalyzer
         return implode("\n\n", $sqlStatements);
     }
 
+
     protected function inferColumns($headers, $dataRows)
     {
         $columns = [];
         foreach ($headers as $i => $colName) {
             $colValues = $dataRows->pluck($i)->filter(fn($v) => $v !== null && $v !== '');
 
+            // Aquí va tu lógica para determinar tipo, longitud, nullable...
+            // Ejemplo:
             $type = 'VARCHAR';
-            $maxLength = 1;
             $nullable = $colValues->count() < $dataRows->count();
 
             if ($colValues->every(fn($v) => is_numeric($v) && intval($v) == $v)) {
                 $type = 'INT';
-                $maxLength = null;
             } elseif ($colValues->every(fn($v) => $this->isValidDate($v))) {
                 $type = 'DATE';
-                $maxLength = null;
             } elseif ($colValues->every(fn($v) => is_numeric($v))) {
                 $type = 'DECIMAL(10,2)';
-                $maxLength = null;
             } else {
                 $maxLength = max($colValues->map(fn($v) => strlen((string)$v))->toArray() ?: [1]);
                 $maxLength = min($maxLength, 255);
@@ -100,7 +105,7 @@ class ExcelAnalyzer
 
             $columns[$colName] = [
                 'type' => $type,
-                'length' => $maxLength,
+                'length' => $maxLength ?? null,
                 'nullable' => $nullable,
                 'is_primary' => false,
                 'is_foreign' => false,
@@ -109,6 +114,7 @@ class ExcelAnalyzer
         }
         return $columns;
     }
+
 
     protected function detectPrimaryKey(array $columnsInfo)
     {
@@ -125,20 +131,29 @@ class ExcelAnalyzer
     protected function detectForeignKeys(array $columnsInfo, array $schemas)
     {
         foreach ($columnsInfo as $colName => &$info) {
-            if ($info['is_primary']) continue;
+        if ($info['is_primary']) continue;
 
-            if (preg_match('/^(.*)_id$/i', $colName, $matches)) {
-                $refTable = $matches[1];
-                if (isset($schemas[$refTable])) {
-                    if (isset($schemas[$refTable]['id']) && $schemas[$refTable]['id']['is_primary']) {
+        if (preg_match('/^(.*)_id$/i', $colName, $matches)) {
+            $refTable = $matches[1];
+
+            // ✅ Probar singular y plural usando Str helper de Laravel
+            $singular = Str::singular($refTable);
+            $plural = Str::plural($refTable);
+
+            foreach ([$singular, $plural] as $candidate) {
+                if (isset($schemas[$candidate])) {
+                    if (isset($schemas[$candidate]['id']) && $schemas[$candidate]['id']['is_primary']) {
                         $info['is_foreign'] = true;
-                        $info['references'] = $refTable;
+                        $info['references'] = $candidate;
                         $info['nullable'] = true;
+                        break; // una coincidencia es suficiente
                     }
                 }
             }
         }
-        return $columnsInfo;
+    }
+
+    return $columnsInfo;
     }
 
     protected function createTableSQL(string $tableName, array $columnsInfo)
@@ -204,4 +219,12 @@ class ExcelAnalyzer
 
         return false;
     }
+
+    public function debugTables()
+{
+    foreach ($this->tables as $tableName => $rows) {
+        dump("Tabla: $tableName");
+        dump("Headers: ", $rows[0]);
+    }
+}
 }

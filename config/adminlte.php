@@ -322,7 +322,7 @@ return [
         ],
         [
             'text' => 'Subir Excel',
-            'url'  => '/home',
+            'url'  => '/',
             'icon' => 'fas fa-upload',
         ],
         //[

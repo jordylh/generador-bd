@@ -14,7 +14,7 @@
     </pre>
 
     <div class="mb-3">
-        <a href="/home" class="btn btn-primary">Enviar otro Excel</a>
+        <a href="/" class="btn btn-primary">Enviar otro Excel</a>
         <button id="copy-btn" class="btn btn-primary">
             Copiar al Portapapeles
         </button>

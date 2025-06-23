@@ -59,7 +59,7 @@ php artisan key:generate
 php artisan serve
 
 # Abre en tu navegador
-http://127.0.0.1:8000/home
+http://127.0.0.1:8000/
 ```
 
 1️⃣ Sube tu archivo Excel.
@@ -78,7 +78,7 @@ http://127.0.0.1:8000/home
 
 Asegúrate de tener un archivo Excel de prueba en:
 ```bash
-tests/fixtures/test_data.xlsx
+tests/fixtures/sample.xlsx
 ```
 El archivo debe incluir al menos:
 

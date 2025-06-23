@@ -26,9 +26,10 @@
   - Tipos de datos básicos (`INT`, `VARCHAR`).
   - Claves primarias (`id`).
   - Posibles claves foráneas (`*_id`).
+  - Registros por cada tabla
 
 ✅ Vista previa de todas las tablas y datos.  
-✅ Generación del script SQL `CREATE TABLE`.  
+✅ Generación del script SQL `CREATE TABLE` y de `INSERT INTO`.  
 ✅ Botón para copiar SQL al portapapeles.
 
 ---
@@ -75,10 +76,20 @@ http://127.0.0.1:8000/home
 
 ## 🧪 Tests
 
+Asegúrate de tener un archivo Excel de prueba en:
+```bash
+tests/fixtures/test_data.xlsx
+```
+El archivo debe incluir al menos:
+
+* usuarios: columnas id, nombre, email, fecha_registro
+* productos: columnas id, nombre, precio, stock
+* ordenes: columnas id, usuario_id, producto_id, cantidad, fecha_orden
+
+Comando para ejecutar los Tests:
 ```bash
 php artisan test
 ```
-Incluye pruebas unitarias para validar la lectura de archivos de ejemplo y la generación de SQL.
 
 ---
 
@@ -90,6 +101,17 @@ Incluye pruebas unitarias para validar la lectura de archivos de ejemplo y la ge
 
 * Relaciones y detección avanzada de tipos de datos en desarrollo.
 
+* Deteccion de registros.
+
+---
+
+## Requisitos
+* Laravel 10+
+* PHP 8+
+* maatwebsite/excel instalado:
+```bash
+composer require maatwebsite/excel
+```
 ---
 
 ## ✅ Contribuciones

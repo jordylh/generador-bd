@@ -48,9 +48,8 @@ class ExcelAnalyzer
     }
 
     // Generar SQL para todas las tablas con claves, tipos y relaciones detectadas
-    public function generateFullSQL()
+    public function generateFullSQLWithInserts()
     {
-        $sqlStatements = [];
         $schemas = [];
         foreach ($this->tables as $tableName => $rows) {
             $headers = $rows[0]->toArray();
@@ -61,20 +60,30 @@ class ExcelAnalyzer
         }
 
         // Detectar PK
-        foreach ($schemas as $tableName => &$columnsInfo) { // Referencia (&)
+        foreach ($schemas as $tableName => &$columnsInfo) {
             $columnsInfo = $this->detectPrimaryKey($columnsInfo);
         }
         unset($columnsInfo);
 
         // Detectar FK
-        foreach ($schemas as $tableName => &$columnsInfo) { // Referencia (&)
+        foreach ($schemas as $tableName => &$columnsInfo) {
             $columnsInfo = $this->detectForeignKeys($columnsInfo, $schemas);
         }
         unset($columnsInfo);
 
         $sqlStatements = [];
+
+        // Crear tablas
         foreach ($schemas as $tableName => $columnsInfo) {
             $sqlStatements[] = $this->createTableSQL($tableName, $columnsInfo);
+        }
+
+        // Crear inserts
+        foreach ($this->tables as $tableName => $rows) {
+            $headers = $rows[0]->toArray();
+            $dataRows = $rows->slice(1);
+
+            $sqlStatements[] = $this->createInsertSQL($tableName, $headers, $dataRows);
         }
 
         return implode("\n\n", $sqlStatements);
@@ -218,6 +227,40 @@ class ExcelAnalyzer
         }
 
         return false;
+    }
+
+    protected function createInsertSQL(string $tableName, array $headers, $dataRows)
+    {
+        if ($dataRows->isEmpty()) {
+            return ""; // no hay datos para insertar
+        }
+
+        // Preparar columnas para el INSERT
+        $columns = array_map(fn($col) => "`$col`", $headers);
+        $columnsList = implode(", ", $columns);
+
+        // Preparar valores para cada fila
+        $values = [];
+
+        foreach ($dataRows as $row) {
+            // Cada fila puede ser colección o array, por seguridad convertimos a array simple
+            $rowArray = $row instanceof \Illuminate\Support\Collection ? $row->toArray() : (array)$row;
+
+            // Escapar y preparar cada valor para SQL
+            $escapedValues = array_map(function ($value) {
+                if (is_null($value)) {
+                    return "NULL";
+                }
+                // Escapa comillas simples y envuelve en comillas simples
+                return "'" . str_replace("'", "''", (string)$value) . "'";
+            }, $rowArray);
+
+            $values[] = "(" . implode(", ", $escapedValues) . ")";
+        }
+
+        $valuesList = implode(",\n", $values);
+
+        return "INSERT INTO `$tableName` ($columnsList) VALUES\n$valuesList;";
     }
 
     public function debugTables()

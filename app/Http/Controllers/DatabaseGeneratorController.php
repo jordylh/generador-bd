@@ -65,7 +65,7 @@ class DatabaseGeneratorController extends Controller
         }
 
         $analyzer = new ExcelAnalyzer($absolutePath);
-        $sql = $analyzer->generateFullSQL();
+        $sql = $analyzer->generateFullSQLWithInserts();
 
         return view('result', compact('sql'));
     }

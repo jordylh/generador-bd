@@ -2,70 +2,81 @@
 
 namespace App\Services;
 
+// Importamos las clases necesarias para trabajar con Excel
 use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Support\Str;
 
 class ExcelAnalyzer
 {
-    protected $path;
-    protected $tables; // aquí guardamos todas las hojas procesadas
+    protected $path;     // Ruta absoluta al archivo Excel
+    protected $tables;   // Colección con todas las hojas del Excel procesadas
 
     public function __construct($absolutePath)
     {
         $this->path = $absolutePath;
 
+        // Verificamos que el archivo exista
         if (!file_exists($this->path)) {
             throw new \Exception("Archivo no encontrado en: {$this->path}");
         }
 
+        // Leemos el contenido del Excel en colecciones de Laravel
         $collections = Excel::toCollection(null, $this->path);
+        
+        // Cargamos el archivo Excel para obtener nombres de las hojas
         $reader = IOFactory::load($this->path);
         $sheetNames = $reader->getSheetNames();
 
-        $this->tables = collect();
+        $this->tables = collect(); // Inicializamos la colección de tablas
+
+        // Recorremos todas las hojas del archivo
         foreach ($sheetNames as $index => $name) {
             $rows = $collections[$index];
 
-            // Filtrar filas vacías
+            // Eliminamos filas vacías
             $rows = $rows->filter(function ($row) {
                 return $row->filter(fn($cell) => !is_null($cell) && trim($cell) !== '')->isNotEmpty();
             })->values();
 
+            // Guardamos la hoja con su nombre como clave
             $this->tables[$name] = $rows;
         }
-        //foreach ($this->tables as $tableName => $rows) {
-        //    dump("Tabla: $tableName");
-        //    dump($rows->toArray());
-        //}
 
+        // Código para debug que se puede activar:
+        // foreach ($this->tables as $tableName => $rows) {
+        //     dump("Tabla: $tableName");
+        //     dump($rows->toArray());
+        // }
     }
 
-    // Para el preview, devuelve todas las hojas (nombre => filas)
+    // Devuelve todas las hojas con sus filas
     public function loadAllSheets()
     {
         return $this->tables;
     }
 
-    // Generar SQL para todas las tablas con claves, tipos y relaciones detectadas
+    // Genera SQL completo (CREATE TABLE + INSERTs) para todas las hojas
     public function generateFullSQLWithInserts()
     {
         $schemas = [];
+
+        // 1. Inferir columnas y tipos para cada hoja
         foreach ($this->tables as $tableName => $rows) {
-            $headers = $rows[0]->toArray();
-            $dataRows = $rows->slice(1);
+            $headers = $rows[0]->toArray(); // Primera fila como encabezados
+            $dataRows = $rows->slice(1);    // El resto son datos
 
             $columnsInfo = $this->inferColumns($headers, $dataRows);
             $schemas[$tableName] = $columnsInfo;
         }
 
-        // Detectar PK
+        // 2. Detectar llaves primarias
         foreach ($schemas as $tableName => &$columnsInfo) {
             $columnsInfo = $this->detectPrimaryKey($columnsInfo);
         }
         unset($columnsInfo);
 
-        // Detectar FK
+        // 3. Detectar llaves foráneas
         foreach ($schemas as $tableName => &$columnsInfo) {
             $columnsInfo = $this->detectForeignKeys($columnsInfo, $schemas);
         }
@@ -73,12 +84,12 @@ class ExcelAnalyzer
 
         $sqlStatements = [];
 
-        // Crear tablas
+        // 4. Generar SQL de creación de tablas
         foreach ($schemas as $tableName => $columnsInfo) {
             $sqlStatements[] = $this->createTableSQL($tableName, $columnsInfo);
         }
 
-        // Crear inserts
+        // 5. Generar SQL de inserts con datos
         foreach ($this->tables as $tableName => $rows) {
             $headers = $rows[0]->toArray();
             $dataRows = $rows->slice(1);
@@ -86,20 +97,20 @@ class ExcelAnalyzer
             $sqlStatements[] = $this->createInsertSQL($tableName, $headers, $dataRows);
         }
 
+        // Unir todo el SQL generado
         return implode("\n\n", $sqlStatements);
     }
 
-
+    // Infere el tipo de cada columna basado en los valores
     protected function inferColumns($headers, $dataRows)
     {
         $columns = [];
+
         foreach ($headers as $i => $colName) {
             $colValues = $dataRows->pluck($i)->filter(fn($v) => $v !== null && $v !== '');
 
-            // Aquí va tu lógica para determinar tipo, longitud, nullable...
-            // Ejemplo:
             $type = 'VARCHAR';
-            $nullable = $colValues->count() < $dataRows->count();
+            $nullable = $colValues->count() < $dataRows->count(); // Si hay valores faltantes, es nullable
 
             if ($colValues->every(fn($v) => is_numeric($v) && intval($v) == $v)) {
                 $type = 'INT';
@@ -108,6 +119,7 @@ class ExcelAnalyzer
             } elseif ($colValues->every(fn($v) => is_numeric($v))) {
                 $type = 'DECIMAL(10,2)';
             } else {
+                // Calcular longitud máxima para VARCHAR
                 $maxLength = max($colValues->map(fn($v) => strlen((string)$v))->toArray() ?: [1]);
                 $maxLength = min($maxLength, 255);
             }
@@ -121,10 +133,11 @@ class ExcelAnalyzer
                 'references' => null,
             ];
         }
+
         return $columns;
     }
 
-
+    // Detecta si hay una columna que debería ser llave primaria
     protected function detectPrimaryKey(array $columnsInfo)
     {
         foreach ($columnsInfo as $colName => &$info) {
@@ -137,34 +150,38 @@ class ExcelAnalyzer
         return $columnsInfo;
     }
 
+    // Detecta llaves foráneas (basado en columnas *_id que coincidan con otras tablas)
     protected function detectForeignKeys(array $columnsInfo, array $schemas)
     {
         foreach ($columnsInfo as $colName => &$info) {
-        if ($info['is_primary']) continue;
+            if ($info['is_primary']) continue;
 
-        if (preg_match('/^(.*)_id$/i', $colName, $matches)) {
-            $refTable = $matches[1];
+            // Buscar columnas que terminen en _id
+            if (preg_match('/^(.*)_id$/i', $colName, $matches)) {
+                $refTable = $matches[1];
 
-            // ✅ Probar singular y plural usando Str helper de Laravel
-            $singular = Str::singular($refTable);
-            $plural = Str::plural($refTable);
+                // Probar con nombre singular y plural
+                $singular = Str::singular($refTable);
+                $plural = Str::plural($refTable);
 
-            foreach ([$singular, $plural] as $candidate) {
-                if (isset($schemas[$candidate])) {
-                    if (isset($schemas[$candidate]['id']) && $schemas[$candidate]['id']['is_primary']) {
+                foreach ([$singular, $plural] as $candidate) {
+                    if (isset($schemas[$candidate]) &&
+                        isset($schemas[$candidate]['id']) &&
+                        $schemas[$candidate]['id']['is_primary']) {
+
                         $info['is_foreign'] = true;
                         $info['references'] = $candidate;
                         $info['nullable'] = true;
-                        break; // una coincidencia es suficiente
+                        break;
                     }
                 }
             }
         }
+
+        return $columnsInfo;
     }
 
-    return $columnsInfo;
-    }
-
+    // Genera el SQL para CREATE TABLE
     protected function createTableSQL(string $tableName, array $columnsInfo)
     {
         $lines = [];
@@ -173,6 +190,7 @@ class ExcelAnalyzer
         foreach ($columnsInfo as $colName => $info) {
             $line = "`$colName` ";
 
+            // Tipo de datos
             switch ($info['type']) {
                 case 'VARCHAR':
                     $line .= "VARCHAR({$info['length']})";
@@ -202,10 +220,12 @@ class ExcelAnalyzer
         $sql = "CREATE TABLE `$tableName` (\n    ";
         $sql .= implode(",\n    ", $lines);
 
+        // Agregar PRIMARY KEY si existe
         if ($primaryKeys) {
             $sql .= ",\n    PRIMARY KEY (" . implode(', ', $primaryKeys) . ")";
         }
 
+        // Agregar FOREIGN KEYs
         foreach ($columnsInfo as $colName => $info) {
             if ($info['is_foreign'] && $info['references']) {
                 $sql .= ",\n    FOREIGN KEY (`$colName`) REFERENCES `{$info['references']}`(`id`)";
@@ -217,6 +237,7 @@ class ExcelAnalyzer
         return $sql;
     }
 
+    // Verifica si un valor es una fecha válida
     protected function isValidDate($value)
     {
         if ($value instanceof \DateTime) return true;
@@ -229,29 +250,26 @@ class ExcelAnalyzer
         return false;
     }
 
+    // Genera el SQL para los INSERTs
     protected function createInsertSQL(string $tableName, array $headers, $dataRows)
     {
         if ($dataRows->isEmpty()) {
-            return ""; // no hay datos para insertar
+            return ""; // No hay datos
         }
 
-        // Preparar columnas para el INSERT
+        // Preparar columnas
         $columns = array_map(fn($col) => "`$col`", $headers);
         $columnsList = implode(", ", $columns);
 
-        // Preparar valores para cada fila
         $values = [];
 
+        // Recorrer las filas de datos
         foreach ($dataRows as $row) {
-            // Cada fila puede ser colección o array, por seguridad convertimos a array simple
             $rowArray = $row instanceof \Illuminate\Support\Collection ? $row->toArray() : (array)$row;
 
-            // Escapar y preparar cada valor para SQL
+            // Escapar los valores para SQL
             $escapedValues = array_map(function ($value) {
-                if (is_null($value)) {
-                    return "NULL";
-                }
-                // Escapa comillas simples y envuelve en comillas simples
+                if (is_null($value)) return "NULL";
                 return "'" . str_replace("'", "''", (string)$value) . "'";
             }, $rowArray);
 
@@ -263,11 +281,12 @@ class ExcelAnalyzer
         return "INSERT INTO `$tableName` ($columnsList) VALUES\n$valuesList;";
     }
 
+    // Método para depurar las tablas cargadas (muestra nombres y encabezados)
     public function debugTables()
-{
-    foreach ($this->tables as $tableName => $rows) {
-        dump("Tabla: $tableName");
-        dump("Headers: ", $rows[0]);
+    {
+        foreach ($this->tables as $tableName => $rows) {
+            dump("Tabla: $tableName");
+            dump("Headers: ", $rows[0]);
+        }
     }
-}
 }
